@@ -761,4 +761,89 @@ func sendEmail(s map[string]string, to, sub, body string) {
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s", u, to, sub, htmlBody)
 	tlsConfig := &tls.Config{InsecureSkipVerify: true, ServerName: host}; conn, err := tls.Dial("tcp", host+":"+port, tlsConfig); if err != nil { return }; client, _ := smtp.NewClient(conn, host); client.Auth(auth); client.Mail(u); client.Rcpt(to); w, _ := client.Data(); w.Write([]byte(msg)); w.Close(); client.Quit() 
 }
-func startScheduler() { for range time.NewTicker(1 * time.Minute).C { nowUTC := time.Now().UTC(); if nowUTC.Minute() != 0 { continue }; s := getSettingsMap(); if s["tg_token"] == "" { continue }; var users []User; db.Find(&users); for _, u := range users { loc, err := time.LoadLocation(u.Timezone); if err != nil { loc, _ = time.LoadLocation("Asia/Shanghai") }; localTime := nowUTC.In(loc); if localTime.Hour() == u.NotifyTime { var items []Item; db.Where("user_id = ?", u.ID).Find(&items); var alerts []string; for _, it := range items { t, _ := time.ParseInLocation("2006-01-02", it.Date, loc); days := int(t.Sub(localTime).Hours() / 24); if days == 7 || days == 3 || days == 1 || days == 0 { alerts = append(alerts, fmt.Sprintf("• [%s] <b>%s</b> (%dd)", it.Category, it.Name, days)) } }; if len(alerts) > 0 { msgBody := fmt.Sprintf("%s<br><br><i>🛡️ ExpiryGuard System</i>", strings.Join(alerts, "<br>")); tgMsg := fmt.Sprintf("⚠️ <b>%s</b><br><br>%s", LangMap[u.Language]["Notify_Title"], msgBody); if u.ChatID != "" { sendTg(s["tg_token"], u.ChatID, tgMsg) }; if u.Email != "" { sendEmail(s, u.Email, LangMap[u.Language]["Notify_Title"], msgBody) } } } } } }
+func startScheduler() {
+	// 使用 Ticker 每分钟检查一次
+	for range time.NewTicker(1 * time.Minute).C {
+		nowUTC := time.Now().UTC()
+		
+		// 1. 严格控制只在整点分钟执行 (例如 11:00:00)
+		if nowUTC.Minute() != 0 {
+			continue
+		}
+		
+		fmt.Printf("⏰ [Scheduler] Check triggered at UTC: %s\n", nowUTC.Format("15:04"))
+
+		s := getSettingsMap()
+		// 【修复1】删除了原本在这里检查 tg_token == "" 的代码
+		// 即使没有 TG Token，也要允许发送邮件
+
+		var users []User
+		db.Find(&users)
+
+		for _, u := range users {
+			// 加载用户设置的时区，默认上海
+			loc, err := time.LoadLocation(u.Timezone)
+			if err != nil {
+				loc, _ = time.LoadLocation("Asia/Shanghai")
+			}
+			
+			// 获取用户当地时间
+			userLocalTime := nowUTC.In(loc)
+			
+			// 2. 检查是否到了用户设定的通知小时 (例如 11点)
+			if userLocalTime.Hour() == u.NotifyTime {
+				fmt.Printf("🔍 Checking assets for user: %s\n", u.Username)
+				
+				var items []Item
+				db.Where("user_id = ?", u.ID).Find(&items)
+				var alerts []string
+
+				// 【修复2】关键逻辑修正：获取“今天 00:00:00”的时间点
+				// 这样无论几点触发，都用 0点 vs 0点 进行比较
+				todayMidnight := time.Date(userLocalTime.Year(), userLocalTime.Month(), userLocalTime.Day(), 0, 0, 0, 0, loc)
+
+				for _, it := range items {
+					// 解析资产到期日 (也是 00:00:00)
+					targetDate, err := time.ParseInLocation("2006-01-02", it.Date, loc)
+					if err != nil { continue }
+					
+					// 计算差值 (小时数 / 24)
+					// 使用 Round 进行四舍五入，防止夏令时或微小误差导致 6.999 变成 6
+					hoursDiff := targetDate.Sub(todayMidnight).Hours()
+					days := int(hoursDiff / 24.0) 
+
+					// 调试日志：方便你在后台看到计算结果
+					// fmt.Printf("  - Asset: %s, Due: %s, DiffHours: %.1f, Days: %d\n", it.Name, it.Date, hoursDiff, days)
+
+					if days == 7 || days == 3 || days == 1 || days == 0 {
+						msg := fmt.Sprintf("• [%s] <b>%s</b> (%d %s)", it.Category, it.Name, days, LangMap[u.Language]["Sim_DaysLeft"])
+						alerts = append(alerts, msg)
+					} else if days < 0 {
+                        // (可选) 如果你想提示已过期，可以在这里处理
+						// msg := fmt.Sprintf("• [%s] <b>%s</b> (%s)", it.Category, it.Name, LangMap[u.Language]["Sim_Expired"])
+						// alerts = append(alerts, msg)
+					}
+				}
+
+				// 3. 发送通知
+				if len(alerts) > 0 {
+					fmt.Printf("⚡ Sending %d alerts to %s\n", len(alerts), u.Username)
+					
+					msgBody := fmt.Sprintf("%s<br><br><i>🛡️ ExpiryGuard System</i>", strings.Join(alerts, "<br>"))
+					title := LangMap[u.Language]["Notify_Title"]
+					
+					// 发送 Telegram (前提: 已配置 Token 且 用户已绑定)
+					if s["tg_token"] != "" && u.ChatID != "" {
+						tgMsg := fmt.Sprintf("⚠️ <b>%s</b><br><br>%s", title, msgBody)
+						go sendTg(s["tg_token"], u.ChatID, tgMsg) // 加上 go 关键字异步发送，防止阻塞
+					}
+					
+					// 发送 Email (前提: 已配置 SMTP 且 用户有邮箱)
+					if s["smtp_host"] != "" && u.Email != "" {
+						go sendEmail(s, u.Email, title, msgBody) // 加上 go 关键字异步发送
+					}
+				}
+			}
+		}
+	}
+}
