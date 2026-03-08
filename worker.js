@@ -73,6 +73,36 @@ async function getAuthUser(request, storage) {
 
 // ===== Notifications =====
 async function sendTelegramNotification(botToken, chatId, message) {
+
+// ===== 2FA Functions =====
+// 生成 6 位验证码
+function generate2FACode() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// 保存 2FA 验证码到 R2（5 分钟有效）
+async function save2FACode(storage, username, code) {
+    await storage.putJSON(`2fa/${username}.json`, { code, timestamp: Date.now() });
+}
+
+// 验证 2FA 验证码
+async function verify2FACode(storage, username, code) {
+    const data = await storage.getJSON(`2fa/${username}.json`);
+    if (!data) return false;
+    
+    // 检查是否过期（5 分钟）
+    if (Date.now() - data.timestamp > 300000) {
+        await storage.delete(`2fa/${username}.json`);
+        return false;
+    }
+    
+    if (data.code === code) {
+        await storage.delete(`2fa/${username}.json`);
+        return true;
+    }
+    return false;
+}
+
     if (!botToken || !chatId) return false;
     try {
         const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, { 
@@ -140,8 +170,19 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
         <div class="glass-card p-10 rounded-3xl shadow-2xl w-full max-w-sm relative overflow-hidden transition-all duration-300">
             <div class="text-center mb-8"><div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-100 text-blue-600 mb-4 logo-breathe"><i class="fas fa-shield-alt text-2xl"></i></div><h1 class="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">ExpiryGuard Pro</h1></div>
             {{if eq .Page "login"}}
-                <form action="/login" method="POST" class="space-y-5"><div class="relative"><i class="fas fa-user absolute left-4 top-3.5 text-slate-400"></i><input type="text" name="username" class="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-slate-700 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500 transition" placeholder="{{.T.User}}" required></div><div class="relative"><i class="fas fa-lock absolute left-4 top-3.5 text-slate-400"></i><input type="password" name="password" class="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-slate-700 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500 transition" placeholder="{{.T.Pass}}" required></div><button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-500/30 transition transform hover:-translate-y-0.5">{{.T.BtnLogin}}</button></form>
+                {{if eq .LoginStep "2fa"}}
+                <h2 class="text-center font-bold text-lg mb-2 text-slate-700 dark:text-slate-300">安全验证</h2>
+                <p class="text-center text-sm text-slate-500 mb-6">验证码已发送至您的 Telegram</p>
+                <form action="/login?step=2fa" method="POST" class="space-y-5">
+                    <input type="hidden" name="username" value="{{.Username}}">
+                    <div class="relative"><i class="fas fa-key absolute left-4 top-3.5 text-slate-400"></i><input type="text" name="code" class="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-slate-700 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500 transition text-center text-2xl tracking-widest" placeholder="000000" maxlength="6" required autofocus></div>
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-500/30 transition transform hover:-translate-y-0.5">验证并登录</button>
+                </form>
+                <div class="mt-6 text-center text-sm"><a href="/login" class="text-slate-500 hover:text-slate-800 dark:hover:text-white transition">← 返回登录</a></div>
+                {{else}}
+                <form action="/login?step=login" method="POST" class="space-y-5"><div class="relative"><i class="fas fa-user absolute left-4 top-3.5 text-slate-400"></i><input type="text" name="username" class="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-slate-700 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500 transition" placeholder="{{.T.User}}" required></div><div class="relative"><i class="fas fa-lock absolute left-4 top-3.5 text-slate-400"></i><input type="password" name="password" class="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-slate-700 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500 transition" placeholder="{{.T.Pass}}" required></div><button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-500/30 transition transform hover:-translate-y-0.5">{{.T.BtnLogin}}</button></form>
                 <div class="mt-8 text-center text-sm"><span class="text-slate-500">{{.T.NoAccount}}</span><a href="/register" class="text-blue-600 font-bold hover:underline ml-1">{{.T.SignUp}}</a></div>
+                {{end}}
             {{else if eq .Page "register"}}
                 <h2 class="text-center font-bold text-lg mb-6 text-slate-700 dark:text-slate-300">{{.T.RegTitle}}</h2><form action="/register" method="POST" class="space-y-5"><div class="relative"><i class="fas fa-user absolute left-4 top-3.5 text-slate-400"></i><input type="text" name="username" class="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-slate-700 dark:border-slate-600" placeholder="{{.T.User}}" required></div><div class="relative"><i class="fas fa-lock absolute left-4 top-3.5 text-slate-400"></i><input type="password" name="password" class="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-slate-700 dark:border-slate-600" placeholder="{{.T.Pass}}" required></div><button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-green-500/30 transition transform hover:-translate-y-0.5">{{.T.BtnReg}}</button></form><div class="mt-6 text-center text-sm"><a href="/login" class="text-slate-500 hover:text-slate-800 dark:hover:text-white transition">← {{.T.LoginTitle}}</a></div>
             {{end}}
@@ -564,30 +605,72 @@ async function handleRequest(request, env) {
 
 // -- Auth Logic --
 async function handleLogin(request, storage) {
-    const msg = new URL(request.url).searchParams.get('msg');
+    const url = new URL(request.url);
+    const msg = url.searchParams.get('msg');
+    const step = url.searchParams.get('step') || 'login';
+    
     if (request.method === 'GET') {
-        return new Response(renderTemplate({ Page: 'login', User: { Language: 'zh' }, T: LangMap.zh, LoginStep: 'login', Message: msg }), { headers: { 'Content-Type': 'text/html' } });
+        return new Response(renderTemplate({ Page: 'login', User: { Language: 'zh' }, T: LangMap.zh, LoginStep: step, Message: msg }), { headers: { 'Content-Type': 'text/html' } });
     }
     
-    const fd = await request.formData(); 
-    const users = await storage.getUsers(); 
-    const hashedPwd = await hashPassword(fd.get('password'));
-    const user = users.find(x => x.Username === fd.get('username') && x.Password === hashedPwd);
+    const fd = await request.formData();
     
-    if (!user) {
-        return new Response(renderTemplate({ Page: 'login', User: { Language: 'zh' }, T: LangMap.zh, LoginStep: 'login', Message: 'Msg_LoginErr' }), { headers: { 'Content-Type': 'text/html' } });
+    // 步骤 1: 验证用户名密码
+    if (step === 'login') {
+        const users = await storage.getUsers(); 
+        const hashedPwd = await hashPassword(fd.get('password'));
+        const user = users.find(x => x.Username === fd.get('username') && x.Password === hashedPwd);
+        
+        if (!user) {
+            return new Response(renderTemplate({ Page: 'login', User: { Language: 'zh' }, T: LangMap.zh, LoginStep: 'login', Message: 'Msg_LoginErr' }), { headers: { 'Content-Type': 'text/html' } });
+        }
+        
+        // 检查是否配置了 Telegram
+        if (user.ChatID) {
+            const settings = await storage.getSettings();
+            if (settings.tg_token) {
+                // 生成并发送验证码
+                const code = generate2FACode();
+                await save2FACode(storage, user.Username, code);
+                await sendTelegramNotification(settings.tg_token, user.ChatID, `<b>登录验证码</b>\n\n${code}\n\n5分钟内有效`);
+                
+                return new Response(renderTemplate({ Page: 'login', User: { Language: 'zh' }, T: LangMap.zh, LoginStep: '2fa', Username: user.Username, Message: 'Msg_CodeSent' }), { headers: { 'Content-Type': 'text/html' } });
+            }
+        }
+        
+        // 没有配置 Telegram，直接登录
+        const sid = generateSessionId(); 
+        await storage.saveSession(sid, { username: user.Username });
+        
+        return new Response('', { 
+            status: 302, 
+            headers: { 
+                'Location': '/', 
+                'Set-Cookie': setCookie('session', sid) 
+            } 
+        });
     }
-  
-    const sid = generateSessionId(); 
-    await storage.saveSession(sid, { username: user.Username });
     
-    return new Response('', { 
-        status: 302, 
-        headers: { 
-            'Location': new URL('/', request.url).toString(), 
-            'Set-Cookie': setCookie('session', sid) 
-        } 
-    });
+    // 步骤 2: 验证 2FA 验证码
+    if (step === '2fa') {
+        const username = fd.get('username');
+        const code = fd.get('code');
+        
+        if (await verify2FACode(storage, username, code)) {
+            const sid = generateSessionId(); 
+            await storage.saveSession(sid, { username });
+            
+            return new Response('', { 
+                status: 302, 
+                headers: { 
+                    'Location': '/', 
+                    'Set-Cookie': setCookie('session', sid) 
+                } 
+            });
+        } else {
+            return new Response(renderTemplate({ Page: 'login', User: { Language: 'zh' }, T: LangMap.zh, LoginStep: '2fa', Username: username, Message: '验证码错误或已过期' }), { headers: { 'Content-Type': 'text/html' } });
+        }
+    }
 }
 
 async function handleRegister(request, storage) {
