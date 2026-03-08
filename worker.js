@@ -72,8 +72,6 @@ async function getAuthUser(request, storage) {
 }
 
 // ===== Notifications =====
-async function sendTelegramNotification(botToken, chatId, message) {
-
 // ===== 2FA Functions =====
 // 生成 6 位验证码
 function generate2FACode() {
@@ -103,6 +101,8 @@ async function verify2FACode(storage, username, code) {
     return false;
 }
 
+// ===== Notifications =====
+async function sendTelegramNotification(botToken, chatId, message) {
     if (!botToken || !chatId) return false;
     try {
         const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, { 
