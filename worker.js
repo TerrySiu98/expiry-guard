@@ -71,24 +71,19 @@ async function getAuthUser(request, storage) {
     return users.find(u => u.Username === session.username);
 }
 
-// ===== Notifications =====
 // ===== 2FA Functions =====
-// 生成 6 位验证码
 function generate2FACode() {
     return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// 保存 2FA 验证码到 R2（5 分钟有效）
 async function save2FACode(storage, username, code) {
     await storage.putJSON(`2fa/${username}.json`, { code, timestamp: Date.now() });
 }
 
-// 验证 2FA 验证码
 async function verify2FACode(storage, username, code) {
     const data = await storage.getJSON(`2fa/${username}.json`);
     if (!data) return false;
     
-    // 检查是否过期（5 分钟）
     if (Date.now() - data.timestamp > 300000) {
         await storage.delete(`2fa/${username}.json`);
         return false;
@@ -167,16 +162,16 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
              <form id="langForm" action="/set-lang" method="POST"><input type="hidden" name="page" value="{{.Page}}"><select name="lang" onchange="this.form.submit()" class="bg-white/10 text-white text-xs p-2 rounded-lg backdrop-blur border border-white/20 outline-none cursor-pointer hover:bg-white/20 transition"><option value="zh" {{if eq .User.Language "zh"}}selected{{end}}>🇨🇳 中文</option><option value="en" {{if eq .User.Language "en"}}selected{{end}}>🇺🇸 English</option></select></form>
              <button onclick="toggleDark()" class="bg-white/10 text-white p-2 rounded-lg w-9 h-9 flex items-center justify-center backdrop-blur border border-white/20 hover:bg-white/20 transition"><i class="fas fa-moon"></i></button>
         </div>
+        
         <div class="glass-card p-10 rounded-3xl shadow-2xl w-full max-w-sm relative overflow-hidden transition-all duration-300">
-            <div class="text-center mb-8"><div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-100 text-blue-600 mb-4 logo-breathe"><i class="fas fa-shield-alt text-2xl"></i></div><h1 class="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">ExpiryGuard Pro</h1></div>
+            <div class="text-center mb-8"><div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-100 text-blue-600 mb-4 logo-breathe"><i class="fas fa-shield-alt text-2xl"></i></div><h1 class="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">ExpiryGuard</h1></div>
             {{if eq .Page "login"}}
                 {{if eq .LoginStep "2fa"}}
-                <h2 class="text-center font-bold text-lg mb-2 text-slate-700 dark:text-slate-300">安全验证</h2>
-                <p class="text-center text-sm text-slate-500 mb-6">验证码已发送至您的 Telegram</p>
-                <form action="/login?step=2fa" method="POST" class="space-y-5">
+                <form action="/login?step=2fa" method="POST" class="space-y-6">
                     <input type="hidden" name="username" value="{{.Username}}">
-                    <div class="relative"><i class="fas fa-key absolute left-4 top-3.5 text-slate-400"></i><input type="text" name="code" class="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-slate-700 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500 transition text-center text-2xl tracking-widest" placeholder="000000" maxlength="6" required autofocus></div>
-                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-500/30 transition transform hover:-translate-y-0.5">验证并登录</button>
+                    <p class="text-center text-green-500 text-sm font-medium"><i class="fas fa-check-circle"></i> {{.T.Msg_CodeSent}}</p>
+                    <input type="text" name="code" class="w-full px-4 py-3 border rounded-xl text-center tracking-[0.5em] text-2xl font-bold font-mono dark:bg-slate-700 dark:border-slate-600 focus:ring-2 focus:ring-green-500 outline-none" placeholder="000000" maxlength="6" required autofocus>
+                    <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl shadow-lg transition">验证并登录</button>
                 </form>
                 <div class="mt-6 text-center text-sm"><a href="/login" class="text-slate-500 hover:text-slate-800 dark:hover:text-white transition">← 返回登录</a></div>
                 {{else}}
@@ -186,6 +181,12 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
             {{else if eq .Page "register"}}
                 <h2 class="text-center font-bold text-lg mb-6 text-slate-700 dark:text-slate-300">{{.T.RegTitle}}</h2><form action="/register" method="POST" class="space-y-5"><div class="relative"><i class="fas fa-user absolute left-4 top-3.5 text-slate-400"></i><input type="text" name="username" class="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-slate-700 dark:border-slate-600" placeholder="{{.T.User}}" required></div><div class="relative"><i class="fas fa-lock absolute left-4 top-3.5 text-slate-400"></i><input type="password" name="password" class="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-slate-700 dark:border-slate-600" placeholder="{{.T.Pass}}" required></div><button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-green-500/30 transition transform hover:-translate-y-0.5">{{.T.BtnReg}}</button></form><div class="mt-6 text-center text-sm"><a href="/login" class="text-slate-500 hover:text-slate-800 dark:hover:text-white transition">← {{.T.LoginTitle}}</a></div>
             {{end}}
+            
+            <div class="mt-10 text-center">
+                <a href="https://t.me/TerrySiu98" target="_blank" class="text-xs text-slate-400 hover:text-blue-500 transition flex items-center justify-center gap-1 opacity-70 hover:opacity-100">
+                    <span>Designed by Terry</span> <i class="fas fa-external-link-alt text-[9px]"></i>
+                </a>
+            </div>
         </div>
     </div>
     
@@ -365,7 +366,6 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
         }
     </script>
 </body>
-<!-- 导入模态框 -->
 <div id="importModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
     <div class="bg-white dark:bg-darkcard rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
         <h3 class="text-lg font-bold mb-4">导入资产</h3>
@@ -490,8 +490,8 @@ function renderTemplate(data) {
 
 // ===== Language Pack =====
 const LangMap = {
-  zh: { LoginTitle: "登录系统", User: "用户名", Pass: "密码", BtnLogin: "登录", NoAccount: "没有账号？", SignUp: "立即注册", RegTitle: "注册", BtnReg: "确认注册", Dashboard: "控制台", Profile: "个人设置", Admin: "系统管理", Logout: "退出", Total: "总资产", Expiring: "30天内到期", Urgent: "急需处理", Cost30: "30天预算", MyAssets: "资产列表", Export: "导出", Import: "导入", Search: "搜索...", Cat: "分类", Name: "名称", Date: "到期日", Cost: "金额", Link: "直达链接", Action: "操作", Add: "添加资产", Details: "详情", View: "查看", Edit: "编辑", Del: "删除", Save: "保存", Cancel: "取消", Close: "关闭", NotifySettings: "通知设置", ChatID: "TG ID", WebhookUrl: "Webhook URL", Timezone: "时区", NotifyTime: "每日推送", GetID: "获取 ID", TestBtn: "发送测试", GlobalSet: "系统设置", UserMgmt: "用户管理", SetWebhook: "一键绑定 TG Webhook", Backup: "备份", Simulate_Title: "报警测试", Simulate_Btn: "测试报警", Head_ID: "ID", Head_User: "用户", Head_Role: "角色", Head_Info: "信息", Head_IP: "IP", Head_Action: "操作", ResetPwd: "重置密码", DelUser: "删除", Msg_Add: "添加成功", Msg_Upd: "更新成功", Msg_Del: "删除成功", Msg_Saved: "保存成功", Msg_Sent: "发送成功", Msg_WebhookSet: "TG Webhook 绑定成功！", Msg_LoginSuccess: "登录成功", Msg_RegSuccess: "注册成功", Msg_LoginErr: "登录失败", Msg_UserExists: "用户已存在", TZ_Shanghai: "🇨🇳 中国 (北京)", TZ_Tokyo: "🇯🇵 日本 (东京)", TZ_UTC: "🌐 UTC" },
-  en: { LoginTitle: "Login", User: "User", Pass: "Pass", BtnLogin: "Sign In", NoAccount: "No account?", SignUp: "Sign up", RegTitle: "Register", BtnReg: "Register", Dashboard: "Dashboard", Profile: "Settings", Admin: "Admin", Logout: "Logout", Total: "Assets", Expiring: "Expiring(30d)", Urgent: "Urgent", Cost30: "30d Cost", MyAssets: "My Assets", Export: "Export", Import: "Import", Search: "Search...", Cat: "Cat", Name: "Name", Date: "Due Date", Cost: "Cost", Link: "Link", Action: "Action", Add: "Add", Details: "Details", View: "View", Edit: "Edit", Del: "Del", Save: "Save", Cancel: "Cancel", Close: "Close", NotifySettings: "Notifications", ChatID: "TG ID", WebhookUrl: "Webhook URL", Timezone: "Timezone", NotifyTime: "Time", GetID: "Get ID", TestBtn: "Test Alert", GlobalSet: "Global Settings", UserMgmt: "Users", SetWebhook: "Bind TG Webhook", Backup: "Backup", Simulate_Title: "Simulate", Simulate_Btn: "Run", Head_ID: "ID", Head_User: "User", Head_Role: "Role", Head_Info: "Info", Head_IP: "IP", Head_Action: "Action", ResetPwd: "Reset Pwd", DelUser: "Del", Msg_Add: "Added", Msg_Upd: "Updated", Msg_Del: "Deleted", Msg_Saved: "Saved", Msg_Sent: "Sent", Msg_WebhookSet: "Webhook Set!", Msg_LoginSuccess: "Welcome", Msg_RegSuccess: "Registered", Msg_LoginErr: "Error", Msg_UserExists: "Exists", TZ_Shanghai: "🇨🇳 China", TZ_Tokyo: "🇯🇵 Japan", TZ_UTC: "🌐 UTC" }
+  zh: { Msg_CodeSent: "验证码已发送至您的设备", LoginTitle: "登录系统", User: "用户名", Pass: "密码", BtnLogin: "登录", NoAccount: "没有账号？", SignUp: "立即注册", RegTitle: "注册", BtnReg: "确认注册", Dashboard: "控制台", Profile: "个人设置", Admin: "系统管理", Logout: "退出", Total: "总资产", Expiring: "30天内到期", Urgent: "急需处理", Cost30: "30天预算", MyAssets: "资产列表", Export: "导出", Import: "导入", Search: "搜索...", Cat: "分类", Name: "名称", Date: "到期日", Cost: "金额", Link: "直达链接", Action: "操作", Add: "添加资产", Details: "详情", View: "查看", Edit: "编辑", Del: "删除", Save: "保存", Cancel: "取消", Close: "关闭", NotifySettings: "通知设置", ChatID: "TG ID", WebhookUrl: "Webhook URL", Timezone: "时区", NotifyTime: "每日推送", GetID: "获取 ID", TestBtn: "发送测试", GlobalSet: "系统设置", UserMgmt: "用户管理", SetWebhook: "一键绑定 TG Webhook", Backup: "备份", Simulate_Title: "报警测试", Simulate_Btn: "测试报警", Head_ID: "ID", Head_User: "用户", Head_Role: "角色", Head_Info: "信息", Head_IP: "IP", Head_Action: "操作", ResetPwd: "重置密码", DelUser: "删除", Msg_Add: "添加成功", Msg_Upd: "更新成功", Msg_Del: "删除成功", Msg_Saved: "保存成功", Msg_Sent: "发送成功", Msg_WebhookSet: "TG Webhook 绑定成功！", Msg_LoginSuccess: "登录成功", Msg_RegSuccess: "注册成功", Msg_LoginErr: "登录失败", Msg_UserExists: "用户已存在", TZ_Shanghai: "🇨🇳 中国 (北京)", TZ_Tokyo: "🇯🇵 日本 (东京)", TZ_UTC: "🌐 UTC" },
+  en: { Msg_CodeSent: "2FA Code sent to your device", LoginTitle: "Login", User: "User", Pass: "Pass", BtnLogin: "Sign In", NoAccount: "No account?", SignUp: "Sign up", RegTitle: "Register", BtnReg: "Register", Dashboard: "Dashboard", Profile: "Settings", Admin: "Admin", Logout: "Logout", Total: "Assets", Expiring: "Expiring(30d)", Urgent: "Urgent", Cost30: "30d Cost", MyAssets: "My Assets", Export: "Export", Import: "Import", Search: "Search...", Cat: "Cat", Name: "Name", Date: "Due Date", Cost: "Cost", Link: "Link", Action: "Action", Add: "Add", Details: "Details", View: "View", Edit: "Edit", Del: "Del", Save: "Save", Cancel: "Cancel", Close: "Close", NotifySettings: "Notifications", ChatID: "TG ID", WebhookUrl: "Webhook URL", Timezone: "Timezone", NotifyTime: "Time", GetID: "Get ID", TestBtn: "Test Alert", GlobalSet: "Global Settings", UserMgmt: "Users", SetWebhook: "Bind TG Webhook", Backup: "Backup", Simulate_Title: "Simulate", Simulate_Btn: "Run", Head_ID: "ID", Head_User: "User", Head_Role: "Role", Head_Info: "Info", Head_IP: "IP", Head_Action: "Action", ResetPwd: "Reset Pwd", DelUser: "Del", Msg_Add: "Added", Msg_Upd: "Updated", Msg_Del: "Deleted", Msg_Saved: "Saved", Msg_Sent: "Sent", Msg_WebhookSet: "Webhook Set!", Msg_LoginSuccess: "Welcome", Msg_RegSuccess: "Registered", Msg_LoginErr: "Error", Msg_UserExists: "Exists", TZ_Shanghai: "🇨🇳 China", TZ_Tokyo: "🇯🇵 Japan", TZ_UTC: "🌐 UTC" }
 };
 
 // ===== Route Handlers =====
@@ -632,7 +632,14 @@ async function handleLogin(request, storage) {
                 // 生成并发送验证码
                 const code = generate2FACode();
                 await save2FACode(storage, user.Username, code);
-                await sendTelegramNotification(settings.tg_token, user.ChatID, `<b>登录验证码</b>\n\n${code}\n\n5分钟内有效`);
+                
+                // 获取请求 IP
+                const ip = request.headers.get('CF-Connecting-IP') || '未知 IP';
+                
+                // 拼接带 IP 的 TG 推送消息
+                const tgMsg = `<b>登录验证</b>\n\n您的登录验证码是： <b>${code}</b>\n\n请求来源 IP： ${ip}\n\n<i>🛡️ ExpiryGuard System</i>`;
+                
+                await sendTelegramNotification(settings.tg_token, user.ChatID, tgMsg);
                 
                 return new Response(renderTemplate({ Page: 'login', User: { Language: 'zh' }, T: LangMap.zh, LoginStep: '2fa', Username: user.Username, Message: 'Msg_CodeSent' }), { headers: { 'Content-Type': 'text/html' } });
             }
